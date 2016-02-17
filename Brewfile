@@ -3,6 +3,8 @@
 brew 'grc'
 brew 'ack'
 brew 'coreutils'
+brew 'gradle'
+brew 'tree'
 
 tap 'caskroom/cask'
 cask_args appdir: '/Applications'
