@@ -5,6 +5,7 @@ brew 'ack'
 brew 'coreutils'
 brew 'gradle'
 brew 'tree'
+brew 'cntlm'
 
 tap 'caskroom/cask'
 cask_args appdir: '/Applications'
