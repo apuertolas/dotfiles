@@ -1,4 +1,7 @@
-brew 'grc'
+cask_args appdir: '/Applications'
+
+tap 'homebrew/bundle'
+
 brew 'ack'
 brew 'coreutils'
 brew 'tree'
