@@ -4,6 +4,7 @@ brew 'ack'
 brew 'coreutils'
 brew 'tree'
 brew 'gh'
+brew 'awscli'
 
 cask_args appdir: '/Applications'
 cask 'the-unarchiver'
