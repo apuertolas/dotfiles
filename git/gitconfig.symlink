@@ -38,3 +38,6 @@
 
 [init]
 	defaultBranch = main
+[user]
+	email = albert.puertolas@gmail.com
+	name = Albert Puértolas

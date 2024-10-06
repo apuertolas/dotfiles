@@ -1,11 +1,4 @@
-brew 'grc'
-brew 'ack'
-brew 'coreutils'
-
 cask_args appdir: '/Applications'
-
-tap 'homebrew/bundle'
-tap 'puma/puma'
 
 brew 'ack'
 brew 'coreutils'
@@ -21,3 +14,4 @@ cask 'chatgpt'
 cask 'notion'
 cask 'arc'
 cask 'whatsapp'
+cask 'warp'
