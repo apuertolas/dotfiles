@@ -1,10 +1,7 @@
-# Brewfile with common dependencies
-
 brew 'grc'
 brew 'ack'
 brew 'coreutils'
 
-tap 'caskroom/cask'
 cask_args appdir: '/Applications'
 
 tap 'homebrew/bundle'
