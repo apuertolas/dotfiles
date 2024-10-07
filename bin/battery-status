@@ -5,6 +5,9 @@
 # A quick little indicator for battery status on your Mac laptop, suitable for
 # display in your prompt.
 
+
+
+
 if test ! "$(uname)" = "Darwin"
   then
   printf ""
@@ -17,6 +20,12 @@ time_left=$(echo $battstat |
   cut -f2 |
   awk -F"; " '{print $3}' |
   cut -d' ' -f1
+)
+
+# Extract battery percentage
+battery_percent=$(echo $battstat |
+  grep -o '[0-9]\+%' |
+  cut -d% -f1
 )
 
 if [[ $(pmset -g ac) == *"No adapter attached."* ]]
@@ -36,4 +45,4 @@ then
   time_left='⚡️ '
 fi
 
-printf "\033[1;92m$emoji  $time_left \033[0m"
+printf "\033[1;92m$emoji  $battery_percent%% $time_left \033[0m"
