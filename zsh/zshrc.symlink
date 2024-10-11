@@ -49,5 +49,10 @@ zle -N down-line-or-beginning-search
 bindkey "^[[A" up-line-or-beginning-search # Up
 bindkey "^[[B" down-line-or-beginning-search # Down
 
-eval "$(ssh-agent -s)"
-ssh-add ~/.ssh/id_ed25519
+# SSH Agent
+if [ -z "$SSH_AUTH_SOCK" ]; then
+  eval "$(ssh-agent -s)" > /dev/null
+fi
+
+# Add your SSH private key to the agent (replace id_rsa with your key name if different)
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519 > /dev/null 2>&1
