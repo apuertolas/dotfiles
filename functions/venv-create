@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+
+venv-create() {
+    source $ZSH/bin/venv-create "$@"
+}

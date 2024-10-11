@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+
+venv() {
+    source $ZSH/bin/venv-activate $1
+}

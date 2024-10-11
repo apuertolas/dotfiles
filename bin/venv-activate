@@ -1,0 +1,28 @@
+#!/usr/bin/env zsh
+
+# Check if $VENVS is set
+if [[ -z $VENVS ]]; then
+    echo "Error: \$VENVS environment variable is not set."
+    return 1
+fi
+
+# Check if a venv name was provided
+if [[ $# -eq 0 ]]; then
+    echo "Usage: venv-activate <venv_name>"
+    return 1
+fi
+
+VENV_NAME=$1
+VENV_PATH="$VENVS/$VENV_NAME"
+
+# Check if the virtual environment exists
+if [[ ! -d $VENV_PATH ]]; then
+    echo "Error: Virtual environment '$VENV_NAME' not found in $VENVS"
+    return 1
+fi
+
+# Activate the virtual environment
+source "$VENV_PATH/bin/activate"
+
+# Provide feedback
+echo "Activated virtual environment: $VENV_NAME"

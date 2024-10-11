@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+
+venv-delete() {
+    source  $ZSH/bin/venv-delete $1
+}

@@ -1,0 +1,39 @@
+#!/usr/bin/env zsh
+
+# Check if $VENVS is set
+if [[ -z $VENVS ]]; then
+    echo "Error: \$VENVS environment variable is not set."
+    return 1
+fi
+
+# Check if a venv name was provided
+if [[ $# -eq 0 ]]; then
+    echo "Usage: venv-delete <venv_name>"
+    return 1
+fi
+
+VENV_NAME=$1
+VENV_PATH="$VENVS/$VENV_NAME"
+
+# Check if the virtual environment exists
+if [[ ! -d $VENV_PATH ]]; then
+    echo "Error: Virtual environment '$VENV_NAME' not found in $VENVS"
+    return 1
+fi
+
+# Prompt for confirmation
+read -q "REPLY?Are you sure you want to delete the virtual environment '$VENV_NAME'? (y/n) "
+echo  # Move to a new line after the reply
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Deactivate the virtual environment if it's currently active
+    if [[ "$VIRTUAL_ENV" == "$VENV_PATH" ]]; then
+        deactivate
+    fi
+
+    # Delete the virtual environment
+    rm -rf "$VENV_PATH"
+    echo "Virtual environment '$VENV_NAME' has been deleted."
+else
+    echo "Operation cancelled."
+fi
