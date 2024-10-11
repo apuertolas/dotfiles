@@ -5,6 +5,7 @@ brew 'coreutils'
 brew 'tree'
 brew 'gh'
 brew 'awscli'
+brew 'nodejs'
 
 cask_args appdir: '/Applications'
 cask 'the-unarchiver'
