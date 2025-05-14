@@ -10,9 +10,9 @@ export VENVS=$PROJECTS/python/venvs
 # Stash your environment variables in ~/.localrc. This means they'll stay out
 # of your main dotfiles repository (which may be public, like this one), but
 # you'll have access to them in your scripts.
-if [[ -a ~/.localrc ]]
-then
-  source ~/.localrc
+# Load secrets from encrypted file if it exists
+if [[ -f ~/.localrc.gpg ]]; then
+  gpg --quiet --decrypt ~/.localrc.gpg 2>/dev/null | source /dev/stdin
 fi
 
 # all of our zsh files
@@ -59,3 +59,8 @@ fi
 
 # Add your SSH private key to the agent (replace id_rsa with your key name if different)
 ssh-add --apple-use-keychain ~/.ssh/id_ed25519 > /dev/null 2>&1
+
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init --path)"
+eval "$(pyenv init -)"
