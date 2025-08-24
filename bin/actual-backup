@@ -1,0 +1,214 @@
+#!/bin/bash
+
+# Actual Database Backup Script
+# Backs up Actual database files to cloud storage with XZ compression
+# 
+# Configuration via environment variables or ~/.config/actual-backup/config
+
+set -e  # Exit on any error
+
+# Default configuration
+DEFAULT_SOURCE_DIR="$HOME/actual/data/user-files"
+DEFAULT_BACKUP_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Actual_Backups"
+DEFAULT_MAX_BACKUPS=10
+DEFAULT_USE_COMPRESSION=true
+DEFAULT_COMPRESSION_TYPE="xz"
+
+# Configuration file paths
+CONFIG_DIR="$HOME/.config/actual-backup"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# Load configuration from file if it exists
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Environment variables override config file
+SOURCE_DIR="${ACTUAL_SOURCE_DIR:-${SOURCE_DIR:-$DEFAULT_SOURCE_DIR}}"
+BACKUP_DIR="${ACTUAL_BACKUP_DIR:-${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}}"
+MAX_BACKUPS="${ACTUAL_MAX_BACKUPS:-${MAX_BACKUPS:-$DEFAULT_MAX_BACKUPS}}"
+USE_COMPRESSION="${ACTUAL_USE_COMPRESSION:-${USE_COMPRESSION:-$DEFAULT_USE_COMPRESSION}}"
+COMPRESSION_TYPE="${ACTUAL_COMPRESSION_TYPE:-${COMPRESSION_TYPE:-$DEFAULT_COMPRESSION_TYPE}}"
+
+# Generate timestamp and backup filename
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+if [ "$USE_COMPRESSION" = "true" ]; then
+    case "$COMPRESSION_TYPE" in
+        "xz")   BACKUP_FILE="$BACKUP_DIR/actual_backup_$TIMESTAMP.tar.xz" ;;
+        "gzip") BACKUP_FILE="$BACKUP_DIR/actual_backup_$TIMESTAMP.tar.gz" ;;
+        "bzip2") BACKUP_FILE="$BACKUP_DIR/actual_backup_$TIMESTAMP.tar.bz2" ;;
+        *) echo "Warning: Unknown compression type '$COMPRESSION_TYPE', using xz"
+           BACKUP_FILE="$BACKUP_DIR/actual_backup_$TIMESTAMP.tar.xz"
+           COMPRESSION_TYPE="xz" ;;
+    esac
+else
+    BACKUP_FILE="$BACKUP_DIR/actual_backup_$TIMESTAMP.tar"
+fi
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Help function
+show_help() {
+    echo "Usage: actual-backup [OPTIONS]"
+    echo ""
+    echo "Backup Actual database files with configurable options."
+    echo ""
+    echo "Options:"
+    echo "  -h, --help              Show this help message"
+    echo "  -c, --config            Show current configuration"
+    echo "  -s, --source DIR        Source directory (default: $DEFAULT_SOURCE_DIR)"
+    echo "  -d, --destination DIR   Backup destination directory"
+    echo "  -m, --max-backups NUM   Maximum number of backups to keep (default: $DEFAULT_MAX_BACKUPS)"
+    echo "  --no-compression        Disable compression"
+    echo "  --compression TYPE      Compression type: xz, gzip, bzip2 (default: xz)"
+    echo ""
+    echo "Environment variables:"
+    echo "  ACTUAL_SOURCE_DIR       Source directory"
+    echo "  ACTUAL_BACKUP_DIR       Backup destination directory"
+    echo "  ACTUAL_MAX_BACKUPS      Maximum backups to keep"
+    echo "  ACTUAL_USE_COMPRESSION  Enable compression (true/false)"
+    echo "  ACTUAL_COMPRESSION_TYPE Compression type"
+    echo ""
+    echo "Configuration file: $CONFIG_FILE"
+    echo ""
+    echo "Examples:"
+    echo "  actual-backup                                    # Use default configuration"
+    echo "  actual-backup -s ~/myapp/data -d ~/Dropbox      # Custom paths"
+    echo "  ACTUAL_MAX_BACKUPS=5 actual-backup              # Keep only 5 backups"
+    echo "  actual-backup --no-compression                  # Disable compression"
+}
+
+show_config() {
+    echo -e "${BLUE}Current Configuration:${NC}"
+    echo "  Source Directory: $SOURCE_DIR"
+    echo "  Backup Directory: $BACKUP_DIR"
+    echo "  Max Backups: $MAX_BACKUPS"
+    echo "  Use Compression: $USE_COMPRESSION"
+    echo "  Compression Type: $COMPRESSION_TYPE"
+    echo "  Config File: $CONFIG_FILE"
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -c|--config)
+            show_config
+            exit 0
+            ;;
+        -s|--source)
+            SOURCE_DIR="$2"
+            shift 2
+            ;;
+        -d|--destination)
+            BACKUP_DIR="$2"
+            shift 2
+            ;;
+        -m|--max-backups)
+            MAX_BACKUPS="$2"
+            shift 2
+            ;;
+        --no-compression)
+            USE_COMPRESSION=false
+            shift
+            ;;
+        --compression)
+            COMPRESSION_TYPE="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+echo -e "${YELLOW}🗄️  Starting Actual Database Backup${NC}"
+if [ "$USE_COMPRESSION" = "true" ]; then
+    echo -e "${YELLOW}   Using ${COMPRESSION_TYPE^^} compression${NC}"
+fi
+
+# Check if source directory exists
+if [ ! -d "$SOURCE_DIR" ]; then
+    echo -e "${RED}❌ Error: Source directory not found: $SOURCE_DIR${NC}"
+    echo -e "${RED}   Use -s to specify a different source directory${NC}"
+    exit 1
+fi
+
+# Check if source directory has files
+if [ "$(find "$SOURCE_DIR" -type f | wc -l)" -eq 0 ]; then
+    echo -e "${RED}❌ Error: No files found in source directory: $SOURCE_DIR${NC}"
+    exit 1
+fi
+
+# Create backup directory structure
+echo -e "${YELLOW}📁 Creating backup directory...${NC}"
+mkdir -p "$BACKUP_DIR"
+
+# Get original size for comparison
+ORIG_SIZE=$(du -sk "$SOURCE_DIR" | cut -f1)
+FILE_COUNT=$(find "$SOURCE_DIR" -type f | wc -l | tr -d ' ')
+
+echo -e "${YELLOW}📋 Processing database files...${NC}"
+echo -e "${YELLOW}   Files: $FILE_COUNT${NC}"
+echo -e "${YELLOW}   Original size: $((ORIG_SIZE / 1024)) MB${NC}"
+
+# Create backup
+cd "$SOURCE_DIR"
+if [ "$USE_COMPRESSION" = "true" ]; then
+    case "$COMPRESSION_TYPE" in
+        "xz")    tar -cJf "$BACKUP_FILE" * ;;
+        "gzip")  tar -czf "$BACKUP_FILE" * ;;
+        "bzip2") tar -cjf "$BACKUP_FILE" * ;;
+    esac
+    
+    # Get compressed file size and calculate savings
+    if command -v stat >/dev/null 2>&1; then
+        COMP_SIZE=$(stat -f%z "$BACKUP_FILE" 2>/dev/null || stat -c%s "$BACKUP_FILE" 2>/dev/null || echo "0")
+        if [ "$COMP_SIZE" -gt 0 ]; then
+            COMP_SIZE_MB=$((COMP_SIZE / 1024 / 1024))
+            RATIO=$((COMP_SIZE * 100 / (ORIG_SIZE * 1024)))
+            SAVINGS=$((100 - RATIO))
+            echo -e "${GREEN}   Compressed size: ${COMP_SIZE_MB} MB (${SAVINGS}% savings)${NC}"
+        fi
+    fi
+else
+    tar -cf "$BACKUP_FILE" *
+fi
+
+echo -e "${GREEN}✅ Backup completed successfully!${NC}"
+echo -e "${GREEN}📊 Backup Details:${NC}"
+echo -e "   📂 Location: $BACKUP_FILE"
+echo -e "   📄 Files: $FILE_COUNT"
+echo -e "   🕒 Timestamp: $TIMESTAMP"
+
+# Clean up old backups
+if [ "$MAX_BACKUPS" -gt 0 ]; then
+    echo -e "${YELLOW}🧹 Cleaning up old backups (keeping last $MAX_BACKUPS)...${NC}"
+    cd "$BACKUP_DIR"
+    
+    # Find backup files with various extensions
+    OLD_BACKUPS=$(ls -1t actual_backup_*.tar* 2>/dev/null | tail -n +$((MAX_BACKUPS + 1)) || true)
+    
+    if [ -n "$OLD_BACKUPS" ]; then
+        echo "$OLD_BACKUPS" | while read -r old_backup; do
+            if [ -f "$old_backup" ]; then
+                echo -e "${YELLOW}🗑️  Removing old backup: $old_backup${NC}"
+                rm -f "$old_backup"
+            fi
+        done
+    else
+        echo -e "${YELLOW}   No old backups to remove${NC}"
+    fi
+fi
+
+echo -e "${GREEN}🎉 Backup process completed!${NC}"

@@ -1,0 +1,306 @@
+#!/bin/bash
+
+# Actual Database Restore Script
+# Restores Actual database backup from cloud storage
+# 
+# Configuration via environment variables or ~/.config/actual-backup/config
+
+set -e  # Exit on any error
+
+# Default configuration
+DEFAULT_TARGET_DIR="$HOME/actual/data/user-files"
+DEFAULT_BACKUP_DIR="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Actual_Backups"
+DEFAULT_CREATE_SAFETY_BACKUP=true
+DEFAULT_REQUIRE_CONFIRMATION=true
+
+# Configuration file paths
+CONFIG_DIR="$HOME/.config/actual-backup"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# Load configuration from file if it exists
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+fi
+
+# Environment variables override config file
+TARGET_DIR="${ACTUAL_TARGET_DIR:-${TARGET_DIR:-$DEFAULT_TARGET_DIR}}"
+BACKUP_DIR="${ACTUAL_BACKUP_DIR:-${BACKUP_DIR:-$DEFAULT_BACKUP_DIR}}"
+CREATE_SAFETY_BACKUP="${ACTUAL_CREATE_SAFETY_BACKUP:-${CREATE_SAFETY_BACKUP:-$DEFAULT_CREATE_SAFETY_BACKUP}}"
+REQUIRE_CONFIRMATION="${ACTUAL_REQUIRE_CONFIRMATION:-${REQUIRE_CONFIRMATION:-$DEFAULT_REQUIRE_CONFIRMATION}}"
+
+# Generate temp directory
+TEMP_DIR="/tmp/actual_restore_$$"
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Help function
+show_help() {
+    echo "Usage: actual-restore [OPTIONS] [BACKUP_FILE]"
+    echo ""
+    echo "Restore Actual database files from backup."
+    echo ""
+    echo "Options:"
+    echo "  -h, --help              Show this help message"
+    echo "  -c, --config            Show current configuration"
+    echo "  -t, --target DIR        Target directory (default: $DEFAULT_TARGET_DIR)"
+    echo "  -b, --backup-dir DIR    Backup directory to search (default: auto-detect)"
+    echo "  -l, --list              List available backups"
+    echo "  -f, --force             Skip confirmation prompts"
+    echo "  --no-safety-backup      Skip creating safety backup of existing files"
+    echo ""
+    echo "Environment variables:"
+    echo "  ACTUAL_TARGET_DIR           Target directory for restored files"
+    echo "  ACTUAL_BACKUP_DIR           Directory containing backup files"
+    echo "  ACTUAL_CREATE_SAFETY_BACKUP Create safety backup (true/false)"
+    echo "  ACTUAL_REQUIRE_CONFIRMATION Require user confirmation (true/false)"
+    echo ""
+    echo "Configuration file: $CONFIG_FILE"
+    echo ""
+    echo "Examples:"
+    echo "  actual-restore                                   # Restore latest backup"
+    echo "  actual-restore backup_20240824_154500.tar.xz    # Restore specific backup"
+    echo "  actual-restore -l                               # List available backups"
+    echo "  actual-restore -f                               # Force restore without confirmation"
+    echo "  actual-restore -t ~/myapp/data                  # Custom target directory"
+}
+
+show_config() {
+    echo -e "${BLUE}Current Configuration:${NC}"
+    echo "  Target Directory: $TARGET_DIR"
+    echo "  Backup Directory: $BACKUP_DIR"
+    echo "  Create Safety Backup: $CREATE_SAFETY_BACKUP"
+    echo "  Require Confirmation: $REQUIRE_CONFIRMATION"
+    echo "  Config File: $CONFIG_FILE"
+}
+
+list_backups() {
+    echo -e "${BLUE}📋 Available Backups in $BACKUP_DIR:${NC}"
+    echo ""
+    
+    if [ ! -d "$BACKUP_DIR" ]; then
+        echo -e "${RED}❌ Backup directory not found: $BACKUP_DIR${NC}"
+        exit 1
+    fi
+    
+    cd "$BACKUP_DIR"
+    BACKUPS=$(ls -1t actual_backup_*.tar* 2>/dev/null || true)
+    
+    if [ -z "$BACKUPS" ]; then
+        echo -e "${YELLOW}   No backup files found${NC}"
+        exit 0
+    fi
+    
+    echo "$BACKUPS" | while IFS= read -r backup; do
+        if [ -f "$backup" ]; then
+            SIZE=$(ls -lh "$backup" | awk '{print $5}')
+            DATE=$(echo "$backup" | sed 's/actual_backup_\\([0-9]*\\)_\\([0-9]*\\)\\.tar\\..*/\\1 \\2/' | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)" "substr($2,1,2)":"substr($2,3,2)":"substr($2,5,2)}')
+            echo -e "   📦 ${GREEN}$backup${NC} (${SIZE}) - ${DATE}"
+        fi
+    done
+}
+
+# Function to cleanup temp directory
+cleanup() {
+    if [ -d "$TEMP_DIR" ]; then
+        echo -e "${YELLOW}🧹 Cleaning up temporary files...${NC}"
+        rm -rf "$TEMP_DIR"
+    fi
+}
+
+# Set trap to cleanup on exit
+trap cleanup EXIT
+
+# Variables for script operation
+SPECIFIC_BACKUP=""
+FORCE_MODE=false
+LIST_MODE=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -c|--config)
+            show_config
+            exit 0
+            ;;
+        -l|--list)
+            LIST_MODE=true
+            shift
+            ;;
+        -t|--target)
+            TARGET_DIR="$2"
+            shift 2
+            ;;
+        -b|--backup-dir)
+            BACKUP_DIR="$2"
+            shift 2
+            ;;
+        -f|--force)
+            FORCE_MODE=true
+            REQUIRE_CONFIRMATION=false
+            shift
+            ;;
+        --no-safety-backup)
+            CREATE_SAFETY_BACKUP=false
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            # Assume it's a backup file name
+            SPECIFIC_BACKUP="$1"
+            shift
+            ;;
+    esac
+done
+
+# Handle list mode
+if [ "$LIST_MODE" = true ]; then
+    list_backups
+    exit 0
+fi
+
+echo -e "${BLUE}🔄 Actual Database Restore Script${NC}"
+echo -e "${BLUE}=================================${NC}"
+
+# Check if backup directory exists
+if [ ! -d "$BACKUP_DIR" ]; then
+    echo -e "${RED}❌ Error: Backup directory not found at $BACKUP_DIR${NC}"
+    echo -e "${RED}   Use -b to specify a different backup directory${NC}"
+    exit 1
+fi
+
+# Find backup to restore
+if [ -n "$SPECIFIC_BACKUP" ]; then
+    # Check if it's a full path or just filename
+    if [ -f "$SPECIFIC_BACKUP" ]; then
+        BACKUP_PATH="$SPECIFIC_BACKUP"
+        BACKUP_FILE=$(basename "$SPECIFIC_BACKUP")
+    elif [ -f "$BACKUP_DIR/$SPECIFIC_BACKUP" ]; then
+        BACKUP_PATH="$BACKUP_DIR/$SPECIFIC_BACKUP"
+        BACKUP_FILE="$SPECIFIC_BACKUP"
+    else
+        echo -e "${RED}❌ Error: Backup file not found: $SPECIFIC_BACKUP${NC}"
+        exit 1
+    fi
+else
+    # Find the latest backup
+    echo -e "${YELLOW}🔍 Looking for latest backup...${NC}"
+    cd "$BACKUP_DIR"
+    BACKUP_FILE=$(ls -1t actual_backup_*.tar* 2>/dev/null | head -n 1 || true)
+    
+    if [ -z "$BACKUP_FILE" ]; then
+        echo -e "${RED}❌ Error: No backup files found in $BACKUP_DIR${NC}"
+        echo -e "${RED}   Use actual-restore -l to see available backups${NC}"
+        exit 1
+    fi
+    
+    BACKUP_PATH="$BACKUP_DIR/$BACKUP_FILE"
+fi
+
+echo -e "${GREEN}📦 Found backup: $BACKUP_FILE${NC}"
+
+# Get backup info
+BACKUP_SIZE=$(ls -lh "$BACKUP_PATH" | awk '{print $5}')
+BACKUP_DATE=$(echo "$BACKUP_FILE" | sed 's/actual_backup_\\([0-9]*\\)_\\([0-9]*\\)\\.tar\\..*/\\1 \\2/' | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)" "substr($2,1,2)":"substr($2,3,2)":"substr($2,5,2)}')
+
+echo -e "${BLUE}📊 Backup Information:${NC}"
+echo -e "   📂 File: $BACKUP_FILE"
+echo -e "   💾 Size: $BACKUP_SIZE"
+echo -e "   📅 Date: $BACKUP_DATE"
+echo ""
+
+# Safety check - show current files
+if [ -d "$TARGET_DIR" ] && [ "$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)" -gt 0 ]; then
+    echo -e "${YELLOW}⚠️  Current files in target directory will be replaced:${NC}"
+    find "$TARGET_DIR" -type f -exec ls -lh {} \\; 2>/dev/null | awk '{print "   📄 "$9" ("$5")"}' || true
+    echo ""
+    
+    if [ "$REQUIRE_CONFIRMATION" = true ]; then
+        read -p "$(echo -e "${YELLOW}❓ Do you want to continue? This will REPLACE current files! (y/N): ${NC}")" -n 1 -r
+        echo ""
+        
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo -e "${BLUE}🚫 Restore cancelled by user.${NC}"
+            exit 0
+        fi
+    fi
+fi
+
+# Create temporary directory
+echo -e "${YELLOW}📁 Creating temporary directory...${NC}"
+mkdir -p "$TEMP_DIR"
+
+# Extract backup
+echo -e "${YELLOW}📋 Extracting backup...${NC}"
+cd "$TEMP_DIR"
+
+# Determine extraction method based on file extension
+case "$BACKUP_FILE" in
+    *.tar.xz)  tar -xJf "$BACKUP_PATH" ;;
+    *.tar.gz)  tar -xzf "$BACKUP_PATH" ;;
+    *.tar.bz2) tar -xjf "$BACKUP_PATH" ;;
+    *.tar)     tar -xf "$BACKUP_PATH" ;;
+    *)
+        echo -e "${RED}❌ Error: Unknown backup file format: $BACKUP_FILE${NC}"
+        exit 1
+        ;;
+esac
+
+# Count extracted files
+EXTRACTED_FILES=$(find . -type f | wc -l | tr -d ' ')
+echo -e "${GREEN}✅ Extracted $EXTRACTED_FILES files${NC}"
+
+# Backup existing files (if any)
+if [ "$CREATE_SAFETY_BACKUP" = true ] && [ -d "$TARGET_DIR" ] && [ "$(find "$TARGET_DIR" -type f 2>/dev/null | wc -l)" -gt 0 ]; then
+    BACKUP_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    SAFETY_BACKUP_DIR="${TARGET_DIR}.backup_$BACKUP_TIMESTAMP"
+    
+    echo -e "${YELLOW}💾 Creating safety backup of current files...${NC}"
+    cp -R "$TARGET_DIR" "$SAFETY_BACKUP_DIR"
+    echo -e "${GREEN}   Safety backup created: $SAFETY_BACKUP_DIR${NC}"
+fi
+
+# Create target directory
+mkdir -p "$TARGET_DIR"
+
+# Clear target directory
+echo -e "${YELLOW}🗑️  Clearing target directory...${NC}"
+rm -rf "$TARGET_DIR"/*
+
+# Copy restored files
+echo -e "${YELLOW}📋 Copying restored files...${NC}"
+cp -R "$TEMP_DIR"/* "$TARGET_DIR/"
+
+# Verify restoration
+RESTORED_FILES=$(find "$TARGET_DIR" -type f | wc -l | tr -d ' ')
+TOTAL_SIZE=$(du -sh "$TARGET_DIR" | cut -f1)
+
+echo ""
+echo -e "${GREEN}🎉 Restore completed successfully!${NC}"
+echo -e "${GREEN}📊 Restore Details:${NC}"
+echo -e "   📂 Location: $TARGET_DIR"
+echo -e "   📄 Files Restored: $RESTORED_FILES"
+echo -e "   💾 Total Size: $TOTAL_SIZE"
+echo -e "   📦 From Backup: $BACKUP_FILE"
+echo -e "   📅 Backup Date: $BACKUP_DATE"
+
+# Show restored files
+echo ""
+echo -e "${BLUE}📋 Restored Files:${NC}"
+find "$TARGET_DIR" -type f -exec ls -lh {} \\; | awk '{print "   📄 "$9" ("$5")"}'
+
+echo ""
+echo -e "${GREEN}✅ Database restoration complete!${NC}"
+echo -e "${BLUE}💡 Your Actual server can now be restarted to use the restored database.${NC}"
