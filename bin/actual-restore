@@ -87,6 +87,15 @@ show_config() {
     echo "  Config File: $CONFIG_FILE"
 }
 
+find_backups() {
+    find "$BACKUP_DIR" -maxdepth 1 -type f \( \
+        -name 'actual_backup_*.tar' -o \
+        -name 'actual_backup_*.tar.xz' -o \
+        -name 'actual_backup_*.tar.gz' -o \
+        -name 'actual_backup_*.tar.bz2' \
+    \) -print | sort -r
+}
+
 list_backups() {
     echo -e "${BLUE}📋 Available Backups in $BACKUP_DIR:${NC}"
     echo ""
@@ -96,8 +105,7 @@ list_backups() {
         exit 1
     fi
     
-    cd "$BACKUP_DIR"
-    BACKUPS=$(ls -1t actual_backup_*.tar* 2>/dev/null || true)
+    BACKUPS=$(find_backups)
     
     if [ -z "$BACKUPS" ]; then
         echo -e "${YELLOW}   No backup files found${NC}"
@@ -106,9 +114,10 @@ list_backups() {
     
     echo "$BACKUPS" | while IFS= read -r backup; do
         if [ -f "$backup" ]; then
+            backup_name=$(basename "$backup")
             SIZE=$(ls -lh "$backup" | awk '{print $5}')
-            DATE=$(echo "$backup" | sed 's/actual_backup_\\([0-9]*\\)_\\([0-9]*\\)\\.tar\\..*/\\1 \\2/' | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)" "substr($2,1,2)":"substr($2,3,2)":"substr($2,5,2)}')
-            echo -e "   📦 ${GREEN}$backup${NC} (${SIZE}) - ${DATE}"
+            DATE=$(echo "$backup_name" | sed 's/actual_backup_\([0-9]*\)_\([0-9]*\)\.tar\(\..*\)\{0,1\}/\1 \2/' | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)" "substr($2,1,2)":"substr($2,3,2)":"substr($2,5,2)}')
+            echo -e "   📦 ${GREEN}$backup_name${NC} (${SIZE}) - ${DATE}"
         fi
     done
 }
@@ -214,16 +223,15 @@ if [ -n "$SPECIFIC_BACKUP" ]; then
 else
     # Find the latest backup
     echo -e "${YELLOW}🔍 Looking for latest backup...${NC}"
-    cd "$BACKUP_DIR"
-    BACKUP_FILE=$(ls -1t actual_backup_*.tar* 2>/dev/null | head -n 1 || true)
+    BACKUP_PATH=$(find_backups | head -n 1 || true)
     
-    if [ -z "$BACKUP_FILE" ]; then
+    if [ -z "$BACKUP_PATH" ]; then
         echo -e "${RED}❌ Error: No backup files found in $BACKUP_DIR${NC}"
         echo -e "${RED}   Use actual-restore -l to see available backups${NC}"
         exit 1
     fi
     
-    BACKUP_PATH="$BACKUP_DIR/$BACKUP_FILE"
+    BACKUP_FILE=$(basename "$BACKUP_PATH")
 fi
 
 echo -e "${GREEN}📦 Found backup: $BACKUP_FILE${NC}"
@@ -241,7 +249,7 @@ if command -v stat >/dev/null 2>&1; then
 else
     BACKUP_SIZE=$(ls -lh "$BACKUP_PATH" | awk '{print $5}')
 fi
-BACKUP_DATE=$(echo "$BACKUP_FILE" | sed 's/actual_backup_\\([0-9]*\\)_\\([0-9]*\\)\\.tar\\..*/\\1 \\2/' | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)" "substr($2,1,2)":"substr($2,3,2)":"substr($2,5,2)}')
+BACKUP_DATE=$(echo "$BACKUP_FILE" | sed 's/actual_backup_\([0-9]*\)_\([0-9]*\)\.tar\..*/\1 \2/' | awk '{print substr($1,1,4)"-"substr($1,5,2)"-"substr($1,7,2)" "substr($2,1,2)":"substr($2,3,2)":"substr($2,5,2)}')
 
 echo -e "${BLUE}📊 Backup Information:${NC}"
     echo -e "   📂 File: $BACKUP_FILE"

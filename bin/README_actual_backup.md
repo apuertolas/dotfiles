@@ -35,8 +35,9 @@ actual-restore -c
 ### Configuration File Setup
 
 ```bash
-# Copy the example configuration
-cp ~/.config/actual-backup/config.example ~/.config/actual-backup/config
+# Create the config directory and file
+mkdir -p ~/.config/actual-backup
+touch ~/.config/actual-backup/config
 
 # Edit to match your setup
 vim ~/.config/actual-backup/config
@@ -154,8 +155,8 @@ export PATH="$HOME/.dotfiles/bin:$PATH"
 # Create config directory
 mkdir -p ~/.config/actual-backup
 
-# Copy example config
-cp ~/.config/actual-backup/config.example ~/.config/actual-backup/config
+# Create config file
+touch ~/.config/actual-backup/config
 
 # Edit configuration
 vim ~/.config/actual-backup/config
